@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import einops
+import multiprocessing as mp
 
 
 def identity(x):
@@ -85,25 +86,27 @@ class SoftMoE(nn.Module):
         # hidden_size = max(input_size, output_size)
         self.num_experts = num_experts
         self.num_slots = num_slots
-
         self.experts = nn.ModuleList([
-            Mlp(d_model, d_model, d_model,
-                hidden_activation=F.relu, output_activation=F.relu,
-                layer_norm=True, out_layer_norm=True, use_residual=False)
+            Mlp(d_model, d_model, [d_model],
+                hidden_activation=F.relu, output_activation=identity,
+                layer_norm=True, out_layer_norm=False, use_residual=True)
             for _ in range(num_experts)
         ])
         self.phi = nn.Parameter(torch.randn(d_model, num_experts, num_slots))
 
     def forward(self, x, mask=None):
-        # TODO: add mask
-        # x.shape [b, n, d], e: experts, s: slots
+        # x.shape [b, n, d], mask.shape [b, n] ; e: experts, s: slots
+
         weights = torch.einsum("b n d , d e s -> b n e s", x, self.phi)
+        if mask is not None:
+            mask = einops.rearrange(mask, "b n -> b n 1 1")
+            weights = weights.masked_fill(~mask, -torch.finfo(weights.dtype).max)
 
         # dispatch tokens to experts
         dispatch_weights = F.softmax(weights, dim=1)
         experts_inputs = torch.einsum("b n e s, b n d -> b e s d", dispatch_weights, x)  # equal to batch mat mul
 
-        # input p inputs per expert
+        # input s inputs per expert
         expert_outputs = torch.stack([self.experts[i](experts_inputs[:, i]) for i in range(self.num_experts)])
         expert_outputs = einops.rearrange(expert_outputs, "e b s d -> b (e s) d")
 
@@ -112,6 +115,7 @@ class SoftMoE(nn.Module):
         combine_weights = F.softmax(combine_weights, dim=-1)
         out = torch.einsum("b n z, b z d -> b n d", combine_weights, expert_outputs)
         return out
+
 
 
 
