@@ -114,8 +114,3 @@ combine_weights = F.softmax(combine_weights, dim=-1)
 out = torch.einsum("b n z, b z d -> b n d", combine_weights, expert_outputs)
 ```
 
-TODO:
-
-1. add mask to the forward in softmoe
-2. use multiprocessing takle the e forward
-

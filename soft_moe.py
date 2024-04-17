@@ -89,7 +89,7 @@ class SoftMoE(nn.Module):
         self.experts = nn.ModuleList([
             Mlp(d_model, d_model, [d_model],
                 hidden_activation=F.relu, output_activation=identity,
-                layer_norm=True, out_layer_norm=False, use_residual=True)
+                layer_norm=True, out_layer_norm=False, use_residual=False)
             for _ in range(num_experts)
         ])
         self.phi = nn.Parameter(torch.randn(d_model, num_experts, num_slots))
